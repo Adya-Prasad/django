@@ -477,3 +477,15 @@ def _format_lazy(format_string, *args, **kwargs):
 
 
 format_lazy = lazy(_format_lazy, str)
+
+def to_title_case(value):
+    """
+    Converts a string to title case.
+
+    Example:
+        >>> to_title_case("hello world")
+        'Hello World'
+    """
+    if not isinstance(value, str):
+        raise ValueError("Input must be a string")
+    return value.title()

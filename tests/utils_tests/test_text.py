@@ -463,3 +463,15 @@ class TestUtilsText(SimpleTestCase):
         )
         with override("fr"):
             self.assertEqual("Ajout de article «\xa0My first try\xa0».", s)
+
+from django.utils.text import to_title_case
+from django.test import SimpleTestCase
+
+class ToTitleCaseTests(SimpleTestCase):
+    def test_to_title_case(self):
+        self.assertEqual(to_title_case("hello world"), "Hello World")
+        self.assertEqual(to_title_case("django framework"), "Django Framework")
+
+    def test_to_title_case_non_string(self):
+        with self.assertRaises(ValueError):
+            to_title_case(123)
