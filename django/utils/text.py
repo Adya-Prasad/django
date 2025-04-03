@@ -478,6 +478,7 @@ def _format_lazy(format_string, *args, **kwargs):
 
 format_lazy = lazy(_format_lazy, str)
 
+
 def to_title_case(value):
     """
     Converts a string to title case.
@@ -489,3 +490,18 @@ def to_title_case(value):
     if not isinstance(value, str):
         raise ValueError("Input must be a string")
     return value.title()
+
+
+def to_camel_case(value):
+    """
+    Converts a string to camel case.
+
+    Example:
+        >>> to_camel_case("hello world")
+        'helloWorld'
+    """
+    if not isinstance(value, str):
+        raise ValueError("Input must be a string")
+
+    words = value.split()
+    return words[0].lower() + "".join(word.capitalize() for word in words[1:])
