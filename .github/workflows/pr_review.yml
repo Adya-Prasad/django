@@ -293,11 +293,11 @@ jobs:
         with:
           script: |
             const { owner, repo, number } = context.issue;
-            const lineLengthValid = "${{ steps.check-doc-format.outputs.line_length_valid }}" === "true";
-            const deprecationValid = "${{ steps.check-doc-format.outputs.deprecation_valid }}" === "true";
-            const invalidFiles = JSON.parse("${{ steps.check-doc-format.outputs.invalid_files }}");
-            const deprecationData = JSON.parse("${{ steps.check-doc-format.outputs.deprecation_data }}");
-            const allValid = "${{ steps.check-doc-format.outputs.all_valid }}" === "true";
+            const lineLengthValid = ${{ steps.check-doc-format.outputs.line_length_valid }} === "true";
+            const deprecationValid = ${{ steps.check-doc-format.outputs.deprecation_valid }} === "true";
+            const invalidFiles = JSON.parse(${{ steps.check-doc-format.outputs.invalid_files }});
+            const deprecationData = JSON.parse(${{ steps.check-doc-format.outputs.deprecation_data }});
+            const allValid = ${{ steps.check-doc-format.outputs.all_valid }} === "true";
 
             // Set the output for the job
             core.setOutput("all_valid", allValid ? "true" : "false");
@@ -413,7 +413,7 @@ jobs:
             const ciStatus = "${{ needs.ci-status-check.outputs.ci_status }}";
             const hasTests = "${{ needs.test-coverage.outputs.has_tests }}";
             const hasVersionNotes = "${{ needs.documentation-checks.outputs.has_version_notes }}";
-            const docChecksValid = "${{ needs.documentation-checks.outputs.all_valid }}";
+            const docChecksValid = "${{ needs.documentation-checks.outputs.doc_checks_valid }}";
             const hasReleaseNotes = "${{ needs.release-notes.outputs.has_release_notes }}";
             const allChecksPass =
               (ciStatus === "success" || ciStatus === "pending") &&
@@ -437,7 +437,7 @@ jobs:
               (hasVersionNotes === "true"
                 ? "✅ Included"
                 : (hasVersionNotes === ""
-                  ? "➖ N/A"
+                  ? "❌ Problem detected, may be docs.yml failed!"
                   : "❌ Missing")) + "\n";
             summary += "- Documentation Format: " +
               (docChecksValid === "true"
@@ -450,7 +450,7 @@ jobs:
                 ? "✅ Included"
                 : (hasReleaseNotes === ""
                   ? "➖ N/A"
-                  : "❌ Missing")) + "\n\n";
+                  : "❌ Missing (may be not required)")) + "\n\n";
             if (allChecksPass) {
               summary += "### Verdict\n\n" +
                 "✅ **All checks passed. This PR is ready for review!**\n";
@@ -459,12 +459,12 @@ jobs:
                 labels: ["ready for review"]
               });
             } else {
-              summary += "### Verdict\n\n" +
-                "⚠️ **Some checks need attention. Please address the issues " +
+              summary += "### Result\n\n" +
+                "⚠️ **Some checks need failed. Please address the issues " +
                 "before requesting review.**\n";
             }
             await github.rest.issues.createComment({
               owner, repo, issue_number: number,
               body: summary
             });
-            core.summary.markdown(summary).write();
+            core.summary.addRaw(summary).write();

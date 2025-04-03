@@ -27,7 +27,7 @@ jobs:
             const repo = context.repo.repo;
 
             // Match Django's official title patterns for ticket references
-            const ticketMatch = title.match(/(?:close[sd]?|fixe[sd]?|refs)\s+#?(\d+)/i);
+            const ticketMatch = title.match(/(?:close[sd]?|fixe[sd]?|refs|taken)\s+#?(\d+)/i);
             const ticketId = ticketMatch?.[1];
 
             // Define labels for different ticket types
