@@ -1198,3 +1198,33 @@ Example:
 
     result = to_title_case("hello world")
     print(result)  # Output: "Hello World"
+
+``django.utils.text``
+=====================
+
+.. module:: django.utils.text
+   :synopsis: Text processing utilities.
+
+For a complete discussion on the usage of the following see the
+:doc:`text utilities documentation </topics/text_utils>`.
+
+.. function:: to_kebab_case(value)
+
+    Converts a string to kebab case.
+
+    :param value: The input string.
+    :type value: str
+
+    :raises ValueError: If the input is not a string.
+
+    :returns: The string converted to kebab case.
+    :rtype: str
+
+    Example:
+
+    .. code-block:: python
+
+        from django.utils.text import to_kebab_case
+
+        result = to_kebab_case("Hello World")
+        print(result)  # Output: hello-world

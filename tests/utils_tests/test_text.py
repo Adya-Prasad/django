@@ -465,7 +465,6 @@ class TestUtilsText(SimpleTestCase):
             self.assertEqual("Ajout de article «\xa0My first try\xa0».", s)
 
 from django.utils.text import to_title_case
-from django.test import SimpleTestCase
 
 class ToTitleCaseTests(SimpleTestCase):
     def test_to_title_case(self):
@@ -475,3 +474,16 @@ class ToTitleCaseTests(SimpleTestCase):
     def test_to_title_case_non_string(self):
         with self.assertRaises(ValueError):
             to_title_case(123)
+
+from django.utils.text import to_kebab_case
+
+class TestTextUtils(SimpleTestCase):
+    def test_to_kebab_case(self):
+        self.assertEqual(to_kebab_case("Hello World"), "hello-world")
+        self.assertEqual(to_kebab_case("Django Framework"), "django-framework")
+        self.assertEqual(to_kebab_case("convert THIS to kebab-case"), "convert-this-to-kebab-case")
+        self.assertEqual(to_kebab_case("already-kebab-case"), "already-kebab-case")
+        self.assertEqual(to_kebab_case("123 number 456"), "123-number-456")
+        self.assertEqual(to_kebab_case("special!@#characters$%^"), "specialcharacters")
+        with self.assertRaises(ValueError):
+            to_kebab_case(123)

@@ -489,3 +489,19 @@ def to_title_case(value):
     if not isinstance(value, str):
         raise ValueError("Input must be a string")
     return value.title()
+
+def to_kebab_case(value):
+    """
+    Converts a string to kebab case.
+
+    Example:
+        >>> to_kebab_case("Hello World")
+        'hello-world'
+    """
+    if not isinstance(value, str):
+        raise ValueError("Input must be a string")
+
+    import re
+    value = re.sub(r'[\s]+', '-', value)  # Replace spaces with hyphens
+    value = re.sub(r'[^a-zA-Z0-9-]', '', value)  # Remove non-alphanumeric characters except hyphens
+    return value.lower()
