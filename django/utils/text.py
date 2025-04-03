@@ -489,3 +489,19 @@ def to_title_case(value):
     if not isinstance(value, str):
         raise ValueError("Input must be a string")
     return value.title()
+
+def to_snake_case(value):
+    """
+    Converts a string to snake case.
+
+    Example:
+        >>> to_snake_case("Hello World")
+        'hello_world'
+    """
+    if not isinstance(value, str):
+        raise ValueError("Input must be a string")
+
+    import re
+    value = re.sub(r'[\s]+', '_', value)  # Replace spaces with underscores
+    value = re.sub(r'[^a-zA-Z0-9_]', '', value)  # Remove non-alphanumeric characters except underscores
+    return value.lower()

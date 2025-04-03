@@ -6,7 +6,7 @@ from django.core.exceptions import SuspiciousFileOperation
 from django.test import SimpleTestCase
 from django.utils import text
 from django.utils.functional import lazystr
-from django.utils.text import format_lazy
+from django.utils.text import format_lazy, to_snake_case, to_title_case
 from django.utils.translation import gettext_lazy, override
 
 IS_WIDE_BUILD = len("\U0001f4a9") == 1
@@ -464,8 +464,7 @@ class TestUtilsText(SimpleTestCase):
         with override("fr"):
             self.assertEqual("Ajout de article «\xa0My first try\xa0».", s)
 
-from django.utils.text import to_title_case
-from django.test import SimpleTestCase
+
 
 class ToTitleCaseTests(SimpleTestCase):
     def test_to_title_case(self):
@@ -475,3 +474,14 @@ class ToTitleCaseTests(SimpleTestCase):
     def test_to_title_case_non_string(self):
         with self.assertRaises(ValueError):
             to_title_case(123)
+
+class TestTextUtils(SimpleTestCase):
+    def test_to_snake_case(self):
+        self.assertEqual(to_snake_case("Hello World"), "hello_world")
+        self.assertEqual(to_snake_case("Django Framework"), "django_framework")
+        self.assertEqual(to_snake_case("convert THIS to snake_case"), "convert_this_to_snake_case")
+        self.assertEqual(to_snake_case("already_snake_case"), "already_snake_case")
+        self.assertEqual(to_snake_case("123 number 456"), "123_number_456")
+        self.assertEqual(to_snake_case("special!@#characters$%^"), "specialcharacters")
+        with self.assertRaises(ValueError):
+            to_snake_case(123)
