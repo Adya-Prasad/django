@@ -8,6 +8,7 @@ from django.utils import text
 from django.utils.functional import lazystr
 from django.utils.text import format_lazy
 from django.utils.translation import gettext_lazy, override
+from django.utils.text import to_title_case, reverse_string
 
 IS_WIDE_BUILD = len("\U0001f4a9") == 1
 
@@ -464,8 +465,7 @@ class TestUtilsText(SimpleTestCase):
         with override("fr"):
             self.assertEqual("Ajout de article «\xa0My first try\xa0».", s)
 
-from django.utils.text import to_title_case
-from django.test import SimpleTestCase
+
 
 class ToTitleCaseTests(SimpleTestCase):
     def test_to_title_case(self):
@@ -475,3 +475,12 @@ class ToTitleCaseTests(SimpleTestCase):
     def test_to_title_case_non_string(self):
         with self.assertRaises(ValueError):
             to_title_case(123)
+
+class ReverseStringTests(SimpleTestCase):
+    def test_reverse_string(self):
+        self.assertEqual(reverse_string("hello"), "olleh")
+        self.assertEqual(reverse_string("Django"), "ognajD")
+
+    def test_reverse_string_non_string(self):
+        with self.assertRaises(ValueError):
+            reverse_string(123)

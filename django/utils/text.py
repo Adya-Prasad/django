@@ -489,3 +489,15 @@ def to_title_case(value):
     if not isinstance(value, str):
         raise ValueError("Input must be a string")
     return value.title()
+
+def reverse_string(value):
+    """
+    Reverses a given string.
+
+    Example:
+        >>> reverse_string("hello")
+        'olleh'
+    """
+    if not isinstance(value, str):
+        raise ValueError("Input must be a string")
+    return value[::-1]

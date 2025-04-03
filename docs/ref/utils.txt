@@ -1198,3 +1198,17 @@ Example:
 
     result = to_title_case("hello world")
     print(result)  # Output: "Hello World"
+
+reverse_string
+==============
+
+Reverses a given string.
+
+Example:
+
+.. function:: python
+
+    from django.utils.text import reverse_string
+
+    result = reverse_string("hello")
+    print(result)  # Output: "olleh"
