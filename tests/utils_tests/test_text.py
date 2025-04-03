@@ -487,3 +487,15 @@ class TestTextUtils(SimpleTestCase):
         self.assertEqual(to_kebab_case("special!@#characters$%^"), "specialcharacters")
         with self.assertRaises(ValueError):
             to_kebab_case(123)
+
+from django.utils.text import to_camel_case
+
+class TestTextUtils(SimpleTestCase):
+    def test_to_camel_case(self):
+        self.assertEqual(to_camel_case("hello world"), "helloWorld")
+        self.assertEqual(to_camel_case("django framework"), "djangoFramework")
+        self.assertEqual(to_camel_case("convert THIS to camelCase"), "convertThisToCamelCase")
+        self.assertEqual(to_camel_case("alreadyCamelCase"), "alreadyCamelCase")
+        self.assertEqual(to_camel_case("123 number 456"), "123Number456")
+        with self.assertRaises(ValueError):
+            to_camel_case(123)

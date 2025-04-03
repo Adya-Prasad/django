@@ -505,3 +505,17 @@ def to_kebab_case(value):
     value = re.sub(r'[\s]+', '-', value)  # Replace spaces with hyphens
     value = re.sub(r'[^a-zA-Z0-9-]', '', value)  # Remove non-alphanumeric characters except hyphens
     return value.lower()
+
+def to_camel_case(value):
+    """
+    Converts a string to camel case.
+
+    Example:
+        >>> to_camel_case("hello world")
+        'helloWorld'
+    """
+    if not isinstance(value, str):
+        raise ValueError("Input must be a string")
+
+    words = value.split()
+    return words[0].lower() + ''.join(word.capitalize() for word in words[1:])

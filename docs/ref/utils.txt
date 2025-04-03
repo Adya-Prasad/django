@@ -1228,3 +1228,25 @@ For a complete discussion on the usage of the following see the
 
         result = to_kebab_case("Hello World")
         print(result)  # Output: hello-world
+
+.. function:: to_camel_case(value)
+
+    Converts a string to camel case.
+
+    :param value: The input string.
+    :type value: str
+
+    :raises ValueError: If the input is not a string.
+
+    :returns: The string converted to camel case.
+    :rtype: str
+
+    Example:
+
+    .. code-block:: python
+
+        from django.utils.text import to_camel_case
+
+        result = to_camel_case("hello world")
+        print(result)  # Output: helloWorld
+"""
