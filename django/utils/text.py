@@ -489,3 +489,19 @@ def to_title_case(value):
     if not isinstance(value, str):
         raise ValueError("Input must be a string")
     return value.title()
+
+def remove_excess_whitespace(value):
+    """
+    Removes excess whitespace from the string by replacing multiple spaces
+    with a single space and stripping leading and trailing whitespace.
+
+    Example:
+        >>> remove_excess_whitespace("  this   is   a test  ")
+        'this is a test'
+
+    Raises:
+        ValueError: If the input is not a string.
+    """
+    if not isinstance(value, str):
+        raise ValueError("Input must be a string")
+    return " ".join(value.split())
