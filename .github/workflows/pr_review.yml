@@ -21,7 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       ci_status: ${{ steps.check-ci.outputs.status }}
-    continue-on-error: true  # Allow this job to fail without stopping the workflow
     steps:
       - name: Check CI Status
         id: check-ci
@@ -43,12 +42,14 @@ jobs:
                  run.name.includes('flake8') ||
                  run.name.includes('isort') ||
                  run.name.includes('black') ||
-                 run.name.includes('JavaScript tests')) &&
-                run.status === 'completed'
+                 run.name.includes('JavaScript tests'))
             );
-            if (relevantWorkflows.length === 0) {
-              core.setOutput('status', 'pending');
-              return { status: 'pending' };
+            const allCompleted = relevantWorkflows.every(
+              run => run.status === 'completed'
+            );
+            if (!allCompleted) {
+              core.setFailed('Not all relevant workflows have completed.');
+              return { status: 'failed' };
             }
             const allPassing = relevantWorkflows.every(
               run => run.conclusion === 'success'
@@ -293,11 +294,11 @@ jobs:
         with:
           script: |
             const { owner, repo, number } = context.issue;
-            const lineLengthValid = ${{ steps.check-doc-format.outputs.line_length_valid }} === "true";
-            const deprecationValid = ${{ steps.check-doc-format.outputs.deprecation_valid }} === "true";
-            const invalidFiles = JSON.parse(${{ steps.check-doc-format.outputs.invalid_files }});
-            const deprecationData = JSON.parse(${{ steps.check-doc-format.outputs.deprecation_data }});
-            const allValid = ${{ steps.check-doc-format.outputs.all_valid }} === "true";
+            const lineLengthValid = core.getInput('line_length_valid') === "true";
+            const deprecationValid = core.getInput('deprecation_valid') === "true";
+            const invalidFiles = JSON.parse(core.getInput('invalid_files'));
+            const deprecationData = JSON.parse(core.getInput('deprecation_data'));
+            const allValid = core.getInput('all_valid') === "true";
 
             // Set the output for the job
             core.setOutput("all_valid", allValid ? "true" : "false");
@@ -306,7 +307,7 @@ jobs:
             if (!lineLengthValid && invalidFiles.length > 0) {
               await github.rest.issues.createComment({
                 owner, repo, issue_number: number,
-                body: `⚠️ **Documentation Line Length Warning**\nThe following documentation files contain lines longer than 80 characters:\n${invalidFiles.join("\n")}\n\nPlease ensure all documentation lines are at most 80 characters long.`
+                body: `⚠️ **Documentation Line Length Warning**\nThe following documentation files contain lines longer than 80 characters:\n${invalidFiles.join("\n")}\n\nPlease ensure all documentation lines are within the 80-character limit.`
               });
             }
 
@@ -410,13 +411,13 @@ jobs:
             const pull = await github.rest.pulls.get({
               owner, repo, pull_number: number
             });
-            const ciStatus = "${{ needs.ci-status-check.outputs.ci_status }}";
-            const hasTests = "${{ needs.test-coverage.outputs.has_tests }}";
-            const hasVersionNotes = "${{ needs.documentation-checks.outputs.has_version_notes }}";
-            const docChecksValid = "${{ needs.documentation-checks.outputs.doc_checks_valid }}";
-            const hasReleaseNotes = "${{ needs.release-notes.outputs.has_release_notes }}";
+            const ciStatus = core.getInput('ci_status');
+            const hasTests = core.getInput('has_tests');
+            const hasVersionNotes = core.getInput('has_version_notes');
+            const docChecksValid = core.getInput('doc_checks_valid');
+            const hasReleaseNotes = core.getInput('has_release_notes');
             const allChecksPass =
-              (ciStatus === "success" || ciStatus === "pending") &&
+              ciStatus === "success" &&
               hasTests === "true" &&
               (hasVersionNotes === "true" || hasVersionNotes === "") &&
               (docChecksValid === "true" || docChecksValid === "") &&
@@ -428,9 +429,7 @@ jobs:
             summary += "- CI Status: " +
               (ciStatus === "success"
                 ? "✅ Passing"
-                : (ciStatus === "pending"
-                  ? "⏳ In progress"
-                  : "❌ Failing")) + "\n";
+                : "❌ Failing") + "\n";
             summary += "- Tests Included: " +
               (hasTests === "true" ? "✅ Yes" : "❌ No") + "\n";
             summary += "- Version Notes: " +
@@ -448,9 +447,7 @@ jobs:
             summary += "- Release Notes: " +
               (hasReleaseNotes === "true"
                 ? "✅ Included"
-                : (hasReleaseNotes === ""
-                  ? "➖ N/A"
-                  : "❌ Missing (may be not required)")) + "\n\n";
+                : "❌ Missing") + "\n\n";
             if (allChecksPass) {
               summary += "### Verdict\n\n" +
                 "✅ **All checks passed. This PR is ready for review!**\n";
@@ -460,7 +457,7 @@ jobs:
               });
             } else {
               summary += "### Result\n\n" +
-                "⚠️ **Some checks need failed. Please address the issues " +
+                "⚠️ **Some checks failed. Please address the issues " +
                 "before requesting review.**\n";
             }
             await github.rest.issues.createComment({

@@ -108,18 +108,24 @@ jobs:
 
                 // Rule 3: 4 minutes + 50 seconds inactivity after warning → Mark as stale & close
                 if (lastContributorActivity < fourMinutesAndFiftySecondsBeforeNow && !labelNames.includes('stale')) {
-                  await github.rest.issues.createComment({
-                    owner,
-                    repo,
-                    issue_number: prNumber,
-                    body: `🚨 This PR has been inactive for too long. Closing due to inactivity. If you are still working on this, please reopen the PR or ask a maintainer for help.`
-                  });
+                  // Add the stale label first
                   await github.rest.issues.addLabels({
                     owner,
                     repo,
                     issue_number: prNumber,
                     labels: ['stale']
                   });
+                  console.log(`PR #${prNumber} marked as stale.`);
+
+                  // Then add the closing comment
+                  await github.rest.issues.createComment({
+                    owner,
+                    repo,
+                    issue_number: prNumber,
+                    body: `🚨 This PR has been inactive for too long. Closing due to inactivity. If you are still working on this, please reopen the PR or ask a maintainer for help.`
+                  });
+
+                  // Finally, close the PR
                   await github.rest.pulls.update({
                     owner,
                     repo,
