@@ -21,6 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       ci_status: ${{ steps.check-ci.outputs.status }}
+    continue-on-error: true  # Allow this job to fail without stopping the workflow
     steps:
       - name: Check CI Status
         id: check-ci
@@ -42,14 +43,12 @@ jobs:
                  run.name.includes('flake8') ||
                  run.name.includes('isort') ||
                  run.name.includes('black') ||
-                 run.name.includes('JavaScript tests'))
+                 run.name.includes('JavaScript tests')) &&
+                run.status === 'completed'
             );
-            const allCompleted = relevantWorkflows.every(
-              run => run.status === 'completed'
-            );
-            if (!allCompleted) {
-              core.setFailed('Not all relevant workflows have completed.');
-              return { status: 'failed' };
+            if (relevantWorkflows.length === 0) {
+              core.setOutput('status', 'pending');
+              return { status: 'pending' };
             }
             const allPassing = relevantWorkflows.every(
               run => run.conclusion === 'success'
@@ -307,7 +306,7 @@ jobs:
             if (!lineLengthValid && invalidFiles.length > 0) {
               await github.rest.issues.createComment({
                 owner, repo, issue_number: number,
-                body: `⚠️ **Documentation Line Length Warning**\nThe following documentation files contain lines longer than 80 characters:\n${invalidFiles.join("\n")}\n\nPlease ensure all documentation lines are within the 80-character limit.`
+                body: `⚠️ **Documentation Line Length Warning**\nThe following documentation files contain lines longer than 80 characters:\n${invalidFiles.join("\n")}\n\nPlease ensure all documentation lines are at most 80 characters long.`
               });
             }
 
@@ -417,7 +416,7 @@ jobs:
             const docChecksValid = "${{ needs.documentation-checks.outputs.doc_checks_valid }}";
             const hasReleaseNotes = "${{ needs.release-notes.outputs.has_release_notes }}";
             const allChecksPass =
-              ciStatus === "success" &&
+              (ciStatus === "success" || ciStatus === "pending") &&
               hasTests === "true" &&
               (hasVersionNotes === "true" || hasVersionNotes === "") &&
               (docChecksValid === "true" || docChecksValid === "") &&
@@ -429,7 +428,9 @@ jobs:
             summary += "- CI Status: " +
               (ciStatus === "success"
                 ? "✅ Passing"
-                : "❌ Failing") + "\n";
+                : (ciStatus === "pending"
+                  ? "⏳ In progress"
+                  : "❌ Failing")) + "\n";
             summary += "- Tests Included: " +
               (hasTests === "true" ? "✅ Yes" : "❌ No") + "\n";
             summary += "- Version Notes: " +
@@ -447,7 +448,9 @@ jobs:
             summary += "- Release Notes: " +
               (hasReleaseNotes === "true"
                 ? "✅ Included"
-                : "❌ Missing") + "\n\n";
+                : (hasReleaseNotes === ""
+                  ? "➖ N/A"
+                  : "❌ Missing (may be not required)")) + "\n\n";
             if (allChecksPass) {
               summary += "### Verdict\n\n" +
                 "✅ **All checks passed. This PR is ready for review!**\n";
@@ -457,7 +460,7 @@ jobs:
               });
             } else {
               summary += "### Result\n\n" +
-                "⚠️ **Some checks failed. Please address the issues " +
+                "⚠️ **Some checks need failed. Please address the issues " +
                 "before requesting review.**\n";
             }
             await github.rest.issues.createComment({

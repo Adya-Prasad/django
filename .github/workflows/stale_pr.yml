@@ -2,7 +2,7 @@ name: Stale PR Management
 
 on:
   schedule:
-    - cron: '*/1 * * * *'  # Runs every minute
+    - cron: '0 0 * * 6'  # Runs weekly on Saturday at midnight
 
 permissions:
   pull-requests: write
@@ -24,17 +24,16 @@ jobs:
             const now = new Date();
 
             // Helper function to calculate a date before now
-            function getDateBeforeNow(minutes = 0, seconds = 0) {
+            function getDateBeforeNow(days = 0) {
               const date = new Date(now);
-              date.setMinutes(date.getMinutes() - minutes);
-              date.setSeconds(date.getSeconds() - seconds);
+              date.setDate(date.getDate() - days);
               return date;
             }
 
             // Inactivity thresholds
-            const threeMinutesBeforeNow = getDateBeforeNow(3);
-            const fourMinutesBeforeNow = getDateBeforeNow(4);
-            const fourMinutesAndFiftySecondsBeforeNow = getDateBeforeNow(4, 50); // 4 minutes + 50 seconds
+            const threeMonthsBeforeNow = getDateBeforeNow(90);
+            const fourMonthsBeforeNow = getDateBeforeNow(120);
+            const oneWeekBeforeNow = getDateBeforeNow(7);
 
             // Helper function to paginate open PRs
             async function getAllOpenPRs() {
@@ -84,8 +83,8 @@ jobs:
                   .map(event => new Date(event.created_at))
                   .sort((a, b) => b - a)[0] || updatedAt;
 
-                // Rule 1: 3 minutes inactivity → Add reminder comment
-                if (lastContributorActivity < threeMinutesBeforeNow && !labelNames.includes('stale')) {
+                // Rule 1: 3 months inactivity → Add reminder comment
+                if (lastContributorActivity < threeMonthsBeforeNow && !labelNames.includes('stale')) {
                   await github.rest.issues.createComment({
                     owner,
                     repo,
@@ -95,8 +94,8 @@ jobs:
                   console.log(`PR #${prNumber} received a reminder comment.`);
                 }
 
-                // Rule 2: 4 minutes inactivity → Add warning comment
-                if (lastContributorActivity < fourMinutesBeforeNow && !labelNames.includes('stale')) {
+                // Rule 2: 4 months inactivity → Add warning comment
+                if (lastContributorActivity < fourMonthsBeforeNow && !labelNames.includes('stale')) {
                   await github.rest.issues.createComment({
                     owner,
                     repo,
@@ -106,8 +105,8 @@ jobs:
                   console.log(`PR #${prNumber} received a warning comment.`);
                 }
 
-                // Rule 3: 4 minutes + 50 seconds inactivity after warning → Mark as stale & close
-                if (lastContributorActivity < fourMinutesAndFiftySecondsBeforeNow && !labelNames.includes('stale')) {
+                // Rule 3: 1 week inactivity after warning → Mark as stale & close
+                if (lastContributorActivity < oneWeekBeforeNow && !labelNames.includes('stale')) {
                   // Add the stale label first
                   await github.rest.issues.addLabels({
                     owner,
