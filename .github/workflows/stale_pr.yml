@@ -1,465 +1,175 @@
----
-    name: PR Review
-    
-    on:
-      pull_request:
-        types: [opened, synchronize, reopened]
-        paths-ignore:
-          - 'docs/releases/**'
-      workflow_dispatch:
-    
-    concurrency:
-      group: "${{ github.workflow }}-${{ github.ref }}"
-      cancel-in-progress: true
-    
-    permissions:
-      contents: read
-      pull-requests: write
-    
-    jobs:
-      # Reuse CI results instead of duplicating checks
-      ci-status-check:
-        runs-on: ubuntu-latest
-        outputs:
-          ci_status: ${{ steps.check-ci.outputs.status }}
-        steps:
-          - name: Check CI Status
-            id: check-ci
-            uses: actions/github-script@v7
-            with:
-              script: |
-                const { owner, repo, number } = context.issue;
-                const pull = await github.rest.pulls.get({
-                  owner, repo, pull_number: number
+name: Stale PR Management
+
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'  # Runs every Monday at midnight UTC
+
+
+permissions:
+  pull-requests: write
+  issues: write
+
+
+jobs:
+  check_stale_prs:
+    name: Check and Manage Stale PRs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch and Process PRs
+        uses: actions/github-script@v7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const now = new Date();
+
+
+            // Helper function to calculate a date before now
+            function getDateBeforeNow(months = 0, weeks = 0, days = 0) {
+              const date = new Date(now);
+              date.setMonth(date.getMonth() - months);
+              date.setDate(date.getDate() - (weeks * 7) - days);
+              return date;
+            }
+
+
+            // Inactivity thresholds
+            const threeMonthsBeforeNow = getDateBeforeNow(3);
+            const fourMonthsBeforeNow = getDateBeforeNow(4);
+            const fourMonthsAndOneWeekBeforeNow = getDateBeforeNow(4, 1); // 4 months + 1 week
+
+
+            // Helper function to paginate open PRs
+            async function getAllOpenPRs() {
+              let allPRs = [];
+              let page = 1;
+              const perPage = 100;
+              while (true) {
+                const { data: prs } = await github.rest.pulls.list({
+                  owner,
+                  repo,
+                  state: "open",
+                  per_page: perPage,
+                  page: page
                 });
-                const sha = pull.data.head.sha;
-                const checkRuns = await github.rest.checks.listForRef({
-                  owner, repo, ref: sha
+                if (prs.length === 0) break;
+                allPRs = allPRs.concat(prs);
+                page++;
+              }
+              return allPRs;
+            }
+
+
+            async function processPRs() {
+              const pullRequests = await getAllOpenPRs();
+              console.log(`Total PRs fetched: ${pullRequests.length}`);
+             
+              for (const pr of pullRequests) {
+                const prNumber = pr.number;
+                const updatedAt = new Date(pr.updated_at);
+
+
+                // Fetch PR labels
+                const { data: labels } = await github.rest.issues.listLabelsOnIssue({
+                  owner,
+                  repo,
+                  issue_number: prNumber
                 });
-                const relevantWorkflows = checkRuns.data.check_runs.filter(
-                  run =>
-                    (run.name.includes('Tests') ||
-                     run.name.includes('Linters') ||
-                     run.name.includes('flake8') ||
-                     run.name.includes('isort') ||
-                     run.name.includes('black') ||
-                     run.name.includes('JavaScript tests')) &&
-                    run.status === 'completed'
-                );
-                if (relevantWorkflows.length === 0) {
-                  core.setOutput('status', 'pending');
-                  return { status: 'pending' };
-                }
-                const allPassing = relevantWorkflows.every(
-                  run => run.conclusion === 'success'
-                );
-                const status = allPassing ? 'success' : 'failure';
-                core.setOutput('status', status);
-                return { status };
-    
-      # Test coverage check - simplified to focus only on Python files
-      test-coverage:
-        runs-on: ubuntu-latest
-        outputs:
-          has_tests: ${{ steps.check-tests.outputs.has_tests }}
-        steps:
-          - name: Checkout
-            uses: actions/checkout@v4
-            with:
-              fetch-depth: 0
-          - name: Check for test files
-            id: check-tests
-            uses: actions/github-script@v7
-            with:
-              script: |
-                const { owner, repo, number } = context.issue;
-                const files = await github.rest.pulls.listFiles({
-                  owner, repo, pull_number: number
+                const labelNames = labels.map(l => l.name);
+
+
+                // Fetch PR timeline to check for contributor activity (comments & events)
+                const { data: timeline } = await github.rest.issues.listEvents({
+                  owner,
+                  repo,
+                  issue_number: prNumber,
+                  per_page: 100
                 });
-                const pythonFiles = files.data.filter(
-                  file => file.filename.endsWith('.py')
-                ).filter(
-                  file =>
-                    !file.filename.includes('/tests/') &&
-                    !file.filename.includes('test_')
-                );
-                const testFiles = files.data.filter(
-                  file => file.filename.endsWith('.py')
-                ).filter(
-                  file =>
-                    file.filename.includes('/tests/') ||
-                    file.filename.includes('test_')
-                );
-                const hasTests = testFiles.length > 0 ||
-                                 pythonFiles.length === 0;
-                core.setOutput('has_tests', hasTests ? 'true' : 'false');
-                if (pythonFiles.length > 0 && !hasTests) {
+                const lastContributorActivity = timeline
+                  .filter(event => event.actor && event.actor.type === "User")
+                  .map(event => new Date(event.created_at))
+                  .sort((a, b) => b - a)[0] || updatedAt;
+
+
+                // Rule 1: 3 months inactivity → Add reminder
+                if (lastContributorActivity < threeMonthsBeforeNow && !labelNames.includes('stale-notice')) {
                   await github.rest.issues.createComment({
-                    owner, repo, issue_number: number,
-                    body: "⚠️ **Test Coverage Check**\n" +
-                          "This PR modifies Python code but doesn't appear " +
-                          "to include any test files. Please consider adding tests " +
-                          "to cover your changes."
+                    owner,
+                    repo,
+                    issue_number: prNumber,
+                    body: `👋 This PR has been inactive for 3 months. Are you still working on this? If you're facing issues, please update the PR or discuss them in our forum.`
                   });
-                }
-                return { has_tests: hasTests };
-    
-      # Documentation checks - combined into a single job for efficiency
-      documentation-checks:
-        runs-on: ubuntu-latest
-        outputs:
-          has_version_notes: ${{ steps.check-version-notes.outputs.has_version_notes }}
-          doc_checks_valid: ${{ steps.summarize-doc-checks.outputs.all_valid }}
-        steps:
-          - name: Checkout
-            uses: actions/checkout@v4
-            with:
-              fetch-depth: 0
-          - name: Set up Python
-            uses: actions/setup-python@v5
-            with:
-              python-version: "3.13"
-          - name: Check for version notes
-            id: check-version-notes
-            uses: actions/github-script@v7
-            with:
-              script: |
-                const fs = require("fs");
-                const { owner, repo, number } = context.issue;
-                const files = await github.rest.pulls.listFiles({
-                  owner, repo, pull_number: number
-                });
-                const djangoFiles = files.data.filter(
-                  file => file.filename.endsWith(".py")
-                ).filter(
-                  file =>
-                    file.filename.startsWith("django/") &&
-                    !file.filename.includes("tests/")
-                );
-                let needsVersionNotes = djangoFiles.length > 0;
-                let hasVersionNotes = false;
-                if (needsVersionNotes) {
-                  for (const file of djangoFiles.concat(
-                    files.data.filter(
-                      file =>
-                        file.filename.endsWith(".txt") ||
-                        file.filename.endsWith(".rst")
-                    ).filter(
-                      file => file.filename.startsWith("docs/")
-                    )
-                  )) {
-                    try {
-                      if (fs.existsSync(file.filename)) {
-                        const fileContent = fs.readFileSync(
-                          file.filename, "utf8"
-                        );
-                        if (
-                          fileContent.includes(".. versionadded::") ||
-                          fileContent.includes(".. versionchanged::")
-                        ) {
-                          hasVersionNotes = true;
-                          break;
-                        }
-                      }
-                    } catch (error) {
-                      console.error(`Error reading file ${file.filename}: ${error}`);
-                    }
-                  }
-                }
-                core.setOutput("has_version_notes", 
-                  hasVersionNotes ? "true" : "false");
-                if (needsVersionNotes && !hasVersionNotes) {
-                  await github.rest.issues.createComment({
-                    owner, repo, issue_number: number,
-                    body: "⚠️ **Version Notes Check**\n" +
-                          "This PR modifies Django core files but doesn't appear " +
-                          "to include version notes (`.. versionadded::` or " +
-                          "`.. versionchanged::`). Please add appropriate version " +
-                          "notes in docstrings or documentation files."
-                  });
-                }
-                return { has_version_notes: hasVersionNotes };
-    
-          - name: Check documentation formatting and deprecation
-            id: check-doc-format
-            uses: actions/github-script@v7
-            with:
-              script: |
-                const fs = require("fs");
-                const { owner, repo, number } = context.issue;
-                const files = await github.rest.pulls.listFiles({
-                  owner, repo, pull_number: number
-                });
-                const docFiles = files.data.filter(
-                  file =>
-                    (file.filename.endsWith(".txt") ||
-                     file.filename.endsWith(".rst")) &&
-                    file.filename.startsWith("docs/")
-                );
-                let lineLengthValid = true;
-                let invalidFiles = [];
-                for (const file of docFiles) {
-                  try {
-                    if (fs.existsSync(file.filename)) {
-                      const fileContent = fs.readFileSync(
-                        file.filename, "utf8"
-                      );
-                      const lines = fileContent.split("\n");
-                      const longLines = lines.map((line, idx) =>
-                        line.length > 80 ? idx + 1 : null
-                      ).filter(idx => idx !== null);
-                      if (longLines.length > 0) {
-                        lineLengthValid = false;
-                        invalidFiles.push(
-                          `${file.filename}: Lines ${longLines.join(", ")}`
-                        );
-                      }
-                    }
-                  } catch (error) {
-                    console.error(`Error reading file ${file.filename}: ${error}`);
-                  }
-                }
-                const pythonFiles = files.data.filter(
-                  file => file.filename.endsWith(".py")
-                ).filter(
-                  file => file.filename.startsWith("django/")
-                );
-                let deprecationFound = false;
-                let deprecationValid = true;
-                let deprecationData = { documented: true, tested: true };
-                for (const file of pythonFiles) {
-                  try {
-                    if (fs.existsSync(file.filename)) {
-                      const fileContent = fs.readFileSync(
-                        file.filename, "utf8"
-                      );
-                      if (
-                        fileContent.includes("RemovedInDjango") ||
-                        fileContent.includes("warnings.warn(")
-                      ) {
-                        deprecationFound = true;
-                        deprecationData.documented =
-                          fileContent.includes(".. deprecated::");
-                        break;
-                      }
-                    }
-                  } catch (error) {
-                    console.error(`Error reading file ${file.filename}: ${error}`);
-                  }
-                }
-                if (deprecationFound) {
-                  const testFiles = files.data.filter(
-                    file => file.filename.endsWith(".py")
-                  ).filter(
-                    file => file.filename.includes("/tests/")
-                  );
-                  deprecationData.tested = testFiles.some(file => {
-                    try {
-                      if (fs.existsSync(file.filename)) {
-                        const fileContent = fs.readFileSync(
-                          file.filename, "utf8"
-                        );
-                        return fileContent.includes("test_deprecation") ||
-                               fileContent.includes("assertWarns(");
-                      }
-                      return false;
-                    } catch (error) {
-                      console.error(`Error reading file ${file.filename}: ${error}`);
-                      return false;
-                    }
-                  });
-                  deprecationValid =
-                    deprecationData.documented && deprecationData.tested;
-                }
-                const allValid = lineLengthValid && deprecationValid;
-                return {
-                  line_length_valid: lineLengthValid,
-                  deprecation_valid: deprecationValid,
-                  invalid_files: invalidFiles,
-                  deprecation_data: deprecationData,
-                  all_valid: allValid
-                };
-    
-          - name: Summarize documentation checks
-            id: summarize-doc-checks
-            uses: actions/github-script@v7
-            with:
-              script: |
-                const { owner, repo, number } = context.issue;
-                console.log("Raw outputs from check-doc-format:",
-                  steps["check-doc-format"].outputs);
-                const rawOutputs = steps["check-doc-format"].outputs;
-                const serializedOutputs = JSON.stringify(rawOutputs);
-                const result = JSON.parse(serializedOutputs);
-                const allValid = result.all_valid === "true";
-                core.setOutput("all_valid", allValid ? "true" : "false");
-                if (!result.line_length_valid &&
-                    result.invalid_files.length > 0) {
-                  await github.rest.issues.createComment({
-                    owner, repo, issue_number: number,
-                    body: "⚠️ **Documentation Line Length Warning**\n" +
-                          "The following documentation files contain lines longer " +
-                          "than 80 characters:\n" +
-                          result.invalid_files.join("\n") +
-                          "\n\nPlease ensure all documentation lines are at most " +
-                          "80 characters long."
-                  });
-                }
-                if (!result.deprecation_valid) {
-                  let message = "⚠️ **Deprecation Warning**\n" +
-                                "This PR appears to include code that raises " +
-                                "deprecation warnings.";
-                  if (!result.deprecation_data.documented) {
-                    message += "\n- Please ensure deprecations are documented with " +
-                               "`.. deprecated::` in the docstring.";
-                  }
-                  if (!result.deprecation_data.tested) {
-                    message += "\n- Please ensure deprecation warnings are tested " +
-                               "with appropriate test cases.";
-                  }
-                  await github.rest.issues.createComment({
-                    owner, repo, issue_number: number,
-                    body: message
-                  });
-                }
-                return { all_valid: allValid };
-    
-      # Check for release notes if needed
-      release-notes:
-        runs-on: ubuntu-latest
-        outputs:
-          has_release_notes: ${{ steps.check-release-notes.outputs.has_release_notes }}
-        steps:
-          - name: Checkout
-            uses: actions/checkout@v4
-            with:
-              fetch-depth: 0
-          - name: Check for release notes
-            id: check-release-notes
-            uses: actions/github-script@v7
-            with:
-              script: |
-                const { owner, repo, number } = context.issue;
-                const [files, prData] = await Promise.all([
-                  github.rest.pulls.listFiles({
-                    owner, repo, pull_number: number
-                  }),
-                  github.rest.pulls.get({
-                    owner, repo, pull_number: number
-                  })
-                ]);
-                const significantChanges = files.data.filter(
-                  file => file.filename.endsWith(".py")
-                ).filter(
-                  file =>
-                    file.filename.startsWith("django/") &&
-                    !file.filename.includes("tests/") &&
-                    !file.filename.includes("django/utils/") &&
-                    !file.filename.includes("django/conf/")
-                );
-                const prTitle = prData.data.title.toLowerCase();
-                const isFeature = prTitle.includes("feature") ||
-                                  prTitle.includes("add") ||
-                                  prTitle.includes("new") ||
-                                  prTitle.includes("implement");
-                const isBugfix = prTitle.includes("fix") ||
-                                 prTitle.includes("bug") ||
-                                 prTitle.includes("issue") ||
-                                 prTitle.includes("solve");
-                const releaseNotesModified = files.data.some(
-                  file =>
-                    file.filename.startsWith("docs/releases/") ||
-                    file.filename.includes("release_notes")
-                );
-                const needsReleaseNotes =
-                  (isFeature || isBugfix) &&
-                  significantChanges.length > 0;
-                const hasReleaseNotes = releaseNotesModified;
-                core.setOutput("has_release_notes",
-                  hasReleaseNotes ? "true" : "false");
-                if (needsReleaseNotes && !hasReleaseNotes) {
-                  await github.rest.issues.createComment({
-                    owner, repo, issue_number: number,
-                    body: "⚠️ **Release Notes Reminder**\n" +
-                          "This PR appears to include significant changes that " +
-                          "should be documented in the release notes. Please consider " +
-                          "adding appropriate entries to `docs/releases/`."
-                  });
-                }
-                return { has_release_notes: hasReleaseNotes };
-    
-      # PR summary and label management
-      pr-review-summary:
-        runs-on: ubuntu-latest
-        needs:
-          - ci-status-check
-          - test-coverage
-          - documentation-checks
-          - release-notes
-        steps:
-          - name: Generate PR Review Summary
-            uses: actions/github-script@v7
-            with:
-              script: |
-                const { owner, repo, number } = context.issue;
-                const pull = await github.rest.pulls.get({
-                  owner, repo, pull_number: number
-                });
-                const ciStatus = "${{ needs.ci-status-check.outputs.ci_status }}";
-                const hasTests = "${{ needs.test-coverage.outputs.has_tests }}";
-                const hasVersionNotes = "${{ needs.documentation-checks.outputs.has_version_notes }}";
-                const docChecksValid = "${{ needs.documentation-checks.outputs.doc_checks_valid }}";
-                const hasReleaseNotes = "${{ needs.release-notes.outputs.has_release_notes }}";
-                const allChecksPass =
-                  (ciStatus === "success" || ciStatus === "pending") &&
-                  hasTests === "true" &&
-                  (hasVersionNotes === "true" || hasVersionNotes === "") &&
-                  (docChecksValid === "true" || docChecksValid === "") &&
-                  (hasReleaseNotes === "true" || hasReleaseNotes === "");
-                let summary = "## PR Review Summary\n\n";
-                summary += "**PR Title**: " + pull.data.title + "\n";
-                summary += "**Author**: " + pull.data.user.login + "\n\n";
-                summary += "### Automated Checks\n\n";
-                summary += "- CI Status: " +
-                  (ciStatus === "success"
-                    ? "✅ Passing"
-                    : (ciStatus === "pending"
-                      ? "⏳ In progress"
-                      : "❌ Failing")) + "\n";
-                summary += "- Tests Included: " +
-                  (hasTests === "true" ? "✅ Yes" : "❌ No") + "\n";
-                summary += "- Version Notes: " +
-                  (hasVersionNotes === "true"
-                    ? "✅ Included"
-                    : (hasVersionNotes === ""
-                      ? "➖ N/A"
-                      : "❌ Missing")) + "\n";
-                summary += "- Documentation Format: " +
-                  (docChecksValid === "true"
-                    ? "✅ Valid"
-                    : (docChecksValid === ""
-                      ? "➖ N/A"
-                      : "❌ Invalid")) + "\n";
-                summary += "- Release Notes: " +
-                  (hasReleaseNotes === "true"
-                    ? "✅ Included"
-                    : (hasReleaseNotes === ""
-                      ? "➖ N/A"
-                      : "❌ Missing")) + "\n\n";
-                if (allChecksPass) {
-                  summary += "### Verdict\n\n" +
-                    "✅ **All checks passed. This PR is ready for review!**\n";
                   await github.rest.issues.addLabels({
-                    owner, repo, issue_number: number,
-                    labels: ["ready for review"]
+                    owner,
+                    repo,
+                    issue_number: prNumber,
+                    labels: ['stale-notice']
                   });
-                } else {
-                  summary += "### Verdict\n\n" +
-                    "⚠️ **Some checks need attention. Please address the issues " +
-                    "before requesting review.**\n";
+                  console.log(`PR #${prNumber} marked with stale-notice.`);
                 }
-                await github.rest.issues.createComment({
-                  owner, repo, issue_number: number,
-                  body: summary
-                });
-                core.summary.markdown(summary).write();
+
+
+                // Rule 2: If contributor responds after the reminder, remove stale-notice
+                if (labelNames.includes('stale-notice') && lastContributorActivity > threeMonthsBeforeNow) {
+                  try {
+                    await github.rest.issues.removeLabel({
+                      owner,
+                      repo,
+                      issue_number: prNumber,
+                      name: 'stale-notice'
+                    });
+                    console.log(`PR #${prNumber} is active again. Removed stale-notice.`);
+                  } catch (e) {
+                    // Ignore if label not found
+                  }
+                }
+
+
+                // Rule 3: 4 months inactivity → Add warning
+                if (lastContributorActivity < fourMonthsBeforeNow && !labelNames.includes('need-attention')) {
+                  await github.rest.issues.createComment({
+                    owner,
+                    repo,
+                    issue_number: prNumber,
+                    body: `⚠️ This PR has been inactive for 4 months. If no action is taken soon, it may be marked as stale and closed.`
+                  });
+                  await github.rest.issues.addLabels({
+                    owner,
+                    repo,
+                    issue_number: prNumber,
+                    labels: ['need-attention']
+                  });
+                  console.log(`PR #${prNumber} marked with need-attention.`);
+                }
+
+
+                // Rule 4: 4 months + 1 week inactivity after warning → Mark as stale & close
+                if (lastContributorActivity < fourMonthsAndOneWeekBeforeNow && labelNames.includes('need-attention')) {
+                  await github.rest.issues.createComment({
+                    owner,
+                    repo,
+                    issue_number: prNumber,
+                    body: `🚨 This PR has been inactive for too long. Closing due to inactivity. If you are still working on this, please reopen the PR or ask a maintainer for help.`
+                  });
+                  await github.rest.issues.addLabels({
+                    owner,
+                    repo,
+                    issue_number: prNumber,
+                    labels: ['stale']
+                  });
+                  await github.rest.pulls.update({
+                    owner,
+                    repo,
+                    pull_number: prNumber,
+                    state: "closed"
+                  });
+                  console.log(`PR #${prNumber} marked as stale and closed.`);
+                }
+              }
+            }
+
+
+            await processPRs();
