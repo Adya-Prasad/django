@@ -1185,16 +1185,25 @@ For a complete discussion on the usage of the following see the
     ``gettext`` function invocations.
 
 
-to_title_case
-=============
+``django.utils.text``
+============================
 
-Converts a string to title case.
-
-Example:
-
+.. module:: django.utils.text
+   :synopsis: title_beautify.
+   
 .. function:: to_title_case(value):
 
+    Converts a string to title case.
     from django.utils.text import to_title_case
 
     result = to_title_case("hello world")
     print(result)  # Output: "Hello World"
+
+.. function:: remove_excess_whitespace(value)
+
+    Removes excess whitespace from the provided string by collapsing multiple whitespace
+    into a single space and trimming leading and trailing whitespace.
+    from django.utils.text import remove_excess_whitespace
+
+    result = remove_excess_whitespace("  this   is   a test  ")
+    print(result)  # Output: "this is a test"

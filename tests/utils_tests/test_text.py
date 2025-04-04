@@ -6,7 +6,7 @@ from django.core.exceptions import SuspiciousFileOperation
 from django.test import SimpleTestCase
 from django.utils import text
 from django.utils.functional import lazystr
-from django.utils.text import format_lazy
+from django.utils.text import format_lazy, remove_excess_whitespace, to_title_case
 from django.utils.translation import gettext_lazy, override
 
 IS_WIDE_BUILD = len("\U0001f4a9") == 1
@@ -464,8 +464,6 @@ class TestUtilsText(SimpleTestCase):
         with override("fr"):
             self.assertEqual("Ajout de article «\xa0My first try\xa0».", s)
 
-from django.utils.text import to_title_case
-from django.test import SimpleTestCase
 
 class ToTitleCaseTests(SimpleTestCase):
     def test_to_title_case(self):
@@ -475,3 +473,15 @@ class ToTitleCaseTests(SimpleTestCase):
     def test_to_title_case_non_string(self):
         with self.assertRaises(ValueError):
             to_title_case(123)
+
+
+class RemoveExcessWhitespaceTests(SimpleTestCase):
+    def test_remove_excess_whitespace(self):
+        self.assertEqual(
+            remove_excess_whitespace("  this   is   a test  "), "this is a test"
+        )
+        self.assertEqual(remove_excess_whitespace("no-extra-spaces"), "no-extra-spaces")
+
+    def test_remove_excess_whitespace_non_string(self):
+        with self.assertRaises(ValueError):
+            remove_excess_whitespace(123)
